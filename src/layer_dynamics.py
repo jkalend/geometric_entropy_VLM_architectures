@@ -58,7 +58,7 @@ def compute_layer_metrics(
     for L in range(num_layers):
         clean_layer = [r[L] for r in clean_valid if L < len(r)]
         noisy_layer = [r[L] for r in noisy_valid if L < len(r)]
-        if len(clean_layer) < 2 or len(noisy_layer) < 1:
+        if len(clean_layer) < 2 or len(noisy_layer) < 2:
             continue
         var_clean = _layer_variance(clean_layer)
         var_noisy = _layer_variance(noisy_layer)
@@ -116,6 +116,8 @@ def compute_layer_roc_aucs(df) -> dict:
     for variant_name, group in df.groupby("variant_name"):
         aucs[variant_name] = {}
         y_true = 1 - group["hallucination_label"]
+        if np.unique(y_true).size < 2:
+            continue
         metrics_df = pd.json_normalize(group["metrics_layer"])
         for k in ["LVD", "LVS", "LVD_middle"]:
             if k in metrics_df.columns:

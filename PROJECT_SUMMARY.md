@@ -10,6 +10,8 @@ This project implements the **HEDGE (Hallucination Estimation via Dense Geometri
 - **Metrics**: Semantic Entropy (SE), RadFlag, and Vision-Amplified Semantic Entropy (VASE). VASE historically provides the most robust hallucination signal by measuring the stability gap between clean and noisy conditions.
 - **Architectures**:
   - **Qwen2.5-VL**: Dense visual tokenization, unified-fusion — highest baseline signal.
+  - **Qwen3-VL-8B**: Successor to Qwen2.5-VL; enhanced visual reasoning.
+- **Qwen3-VL-30B-A3B**: High-performance MoE architecture; state-of-the-art visual perception. Uses **4-bit quantization** (BitsAndBytes) to fit in consumer VRAM.
   - **Med-Gemma**: Restricted tokenization, compressed visual features — lowest baseline signal.
 
 ---
@@ -47,19 +49,19 @@ This project implements the **HEDGE (Hallucination Estimation via Dense Geometri
 
 ### 5. Project Structure
 
-```
+```text
 geometric-entropy/
 ├── src/
-│   ├── hedge_algorithms.py   # SE, RadFlag, VASE, clustering
-│   ├── data_loader.py        # VQA-RAD, MedHallu, HaluEval-Wild
-│   ├── distortion.py         # Visual perturbation
-│   ├── expert_routing.py     # Expert Routing Dynamics (ERD, EPV) for MoE models
-│   ├── label_judge.py        # Ollama / simple hallucination labels
-│   ├── layer_dynamics.py     # LVD, LVS, layer-wise metrics
-│   ├── model_inference.py    # Transformers-based VLM inference
-│   └── pipeline.py           # Full HEDGE pipeline
+├──   ├── hedge_algorithms.py   # SE, RadFlag, VASE, clustering
+├──   ├── data_loader.py        # VQA-RAD, MedHallu, HaluEval-Wild
+├──   ├── distortion.py         # Visual perturbation
+├──   ├── expert_routing.py     # Expert Routing Dynamics (ERD, EPV) for MoE models
+├──   ├── label_judge.py        # Ollama / simple hallucination labels
+├──   ├── layer_dynamics.py     # LVD, LVS, layer-wise metrics
+├──   ├── model_inference.py    # Transformers-based VLM inference
+├──   └── pipeline.py           # Full HEDGE pipeline
 ├── scripts/
-│   └── prepare_data.py       # Dataset download/prep
+├──   └── prepare_data.py       # Dataset download/prep
 ├── run_evaluation.py         # Main entry point
 ├── run_cross_arch.py         # Cross-architecture evaluation
 ├── setup.ps1                 # Windows setup (venv + cu130)
@@ -101,7 +103,7 @@ python run_evaluation.py --model medgemma-4b-it --max-samples 10 --output result
 python run_evaluation.py --layer-dynamics --dataset vqa_rad --max-samples 10 --output results_layer.json
 ```
 
-Uses internal hidden states across LLM layers instead of output-level clustering. Metrics: **LVD** (Layer Variance Delta), **LVS** (Layer Variance Spike), **LVD_middle** (middle layers only). Supports **Qwen2.5-VL**.
+Uses internal hidden states across LLM layers instead of output-level clustering. Metrics: **LVD** (Layer Variance Delta), **LVS** (Layer Variance Spike), **LVD_middle** (middle layers only). Supports **Qwen2.5-VL**, **Qwen3-VL-30B**, and **MedGemma**.
 
 ### Cross-Architecture Evaluation
 

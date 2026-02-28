@@ -41,8 +41,6 @@ def generate_distortions(
     num_samples: int = 10,
     cache_dir: str | Path = ".cache_HEDGE/datasets",
     dataset_id: str = "default",
-    model_name: str | None = None,
-    n_jobs: int = 4,
     force_regenerate: bool = False,
 ) -> list[dict]:
     """

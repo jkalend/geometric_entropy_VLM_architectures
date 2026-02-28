@@ -5,8 +5,8 @@ This project implements the **HEDGE (Hallucination Estimation via Dense Geometri
 ## Key Features
 
 - **HEDGE Framework**: Detects hallucinations by measuring the stability of a model's embedding manifold.
-- **Multi-Architecture Support**: Native support for **Qwen2.5-VL** and **MedGemma**.
-- **Layer-Wise Semantic Dynamics**: Analyzes internal hidden states across LLM layers to identify where hallucinations originate.
+- **Multi-Architecture Support**: Native support for **Qwen2.5-VL**, **Qwen3-VL-8B**, **Qwen3-VL-30B**, and **MedGemma**.
+- **Layer-Wise Semantic Dynamics**: Analyzes internal hidden states across LLM layers to identify where hallucinations originate. Supports **Qwen2.5-VL**, **Qwen3-VL-30B**, and **MedGemma**.
 - **Medical Domain Focus**: Evaluates performance on medical VQA datasets (VQA-RAD, MedHallu).
 - **Windows Optimized**: Custom transformers-based inference pipeline designed to run on Windows (where vLLM is unsupported).
 

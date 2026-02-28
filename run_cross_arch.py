@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.pipeline import run_hedge_pipeline
 
-MODELS = ["qwen2.5-vl-7b", "med-gemma-2-4b", "llava-med", "internvl2.5-8b", "internvl2.5-26b"]
+MODELS = ["qwen2.5-vl-7b", "qwen3-vl-8b", "qwen3-vl-30b", "medgemma-4b-it"]
 
 
 def main():

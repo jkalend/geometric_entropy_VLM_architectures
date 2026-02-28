@@ -53,6 +53,22 @@ def cluster_terms_by_embedding(seq, embedding_cached_fn, threshold=0.90):
     return labels.tolist()
 
 
+def normalize_nli_output(out) -> list[dict]:
+    """Normalize NLI output to a consistent list of dicts with 'label' and 'score'."""
+    if not out:
+        return []
+    # Handle single item vs nested list
+    items = out[0] if isinstance(out[0], list) else out
+    normalized = []
+    for item in items:
+        if isinstance(item, dict):
+            normalized.append({
+                "label": str(item.get("label", "")).upper(),
+                "score": float(item.get("score", 0.0))
+            })
+    return normalized
+
+
 def cluster_terms_by_nli(S, nli, batch_size=64, max_len=200):
     """Cluster by NLI entailment (slower, used optionally)."""
     if not S:
@@ -70,15 +86,17 @@ def cluster_terms_by_nli(S, nli, batch_size=64, max_len=200):
                 continue
             batch = [[S[i], S[j]]]
             try:
-                out = nli(batch, batch_size=batch_size, truncation=True)[0]
+                raw_out = nli(batch, batch_size=batch_size, truncation=True)
+                normalized = normalize_nli_output(raw_out)
                 entail = any(
-                    o.get("label", "").upper() == "ENTAILMENT" and o.get("score", 0) > 0.5
-                    for o in (out if isinstance(out[0], dict) else out)
+                    o["label"] == "ENTAILMENT" and o["score"] > 0.5
+                    for o in normalized
                 )
                 if entail:
                     ids[j] = ids[i]
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.error(f"NLI error in cluster_terms_by_nli: {e}")
         next_id += 1
     return ids
 
@@ -98,13 +116,16 @@ def get_nli_labels(all_sequences, nli_model, B=64):
                     row.append(1)
                 else:
                     try:
-                        out = nli_model([[seq[i], seq[j]]], batch_size=B, truncation=True)
+                        raw_out = nli_model([[seq[i], seq[j]]], batch_size=B, truncation=True)
+                        normalized = normalize_nli_output(raw_out)
                         ent = any(
-                            o.get("label", "").upper() == "ENTAILMENT" and o.get("score", 0) > 0.5
-                            for o in (out[0] if isinstance(out[0], list) else out)
+                            o["label"] == "ENTAILMENT" and o["score"] > 0.5
+                            for o in normalized
                         )
                         row.append(1 if ent else 0)
-                    except Exception:
+                    except Exception as e:
+                        import logging
+                        logging.error(f"NLI error in get_nli_labels: {e}")
                         row.append(0)
             labels.append(row)
         results.append(labels)

@@ -55,8 +55,6 @@ def apply_embed_clustering_df(df, embedding_fn, threshold=0.90, append_question=
         lambda row: _compute_metrics(
             n=row["clustering_input"]["n"],
             cluster_ids=row["cluster_embed"],
-            normal=row["clustering_input"]["normal"],
-            noisy=row["clustering_input"]["noisy"],
             normal_logs=row["clustering_input"]["logn"],
             noisy_logs=row["clustering_input"]["logd"],
             alpha=row["clustering_input"]["alpha"],
@@ -67,7 +65,7 @@ def apply_embed_clustering_df(df, embedding_fn, threshold=0.90, append_question=
     return df
 
 
-def _compute_metrics(n, cluster_ids, normal, noisy, normal_logs, noisy_logs, alpha=1.0):
+def _compute_metrics(n, cluster_ids, normal_logs, noisy_logs, alpha=1.0):
     """Compute SE, RadFlag, VASE from clustering results."""
     ent_clean, dist_clean = sentence_semantic_entropy(normal_logs, cluster_ids[1 : 1 + n])
     ent_noisy, dist_noisy = sentence_semantic_entropy(noisy_logs, cluster_ids[1 + n :])
@@ -84,12 +82,22 @@ def compute_roc_aucs(df):
     We predict hallucination: higher SE/VASE = more hallucination; RadFlag inverted.
     Invert labels so hallucination (0) becomes 1 = positive class for sklearn default.
     """
-    assert "hallucination_label" in df.columns
+    if "hallucination_label" not in df.columns:
+        raise KeyError("DataFrame must contain 'hallucination_label' column.")
+    
     aucs = {}
     for variant_name, group in df.groupby("variant_name"):
         aucs[variant_name] = {}
         # Invert: 1=hallucination (positive), 0=correct — sklearn uses greater label as positive
         y_true = 1 - group["hallucination_label"]
+        
+        # Guard: ROC AUC requires at least two unique classes
+        if len(np.unique(y_true)) < 2:
+            metrics_df = pd.json_normalize(group["metrics_embed"])
+            for k in metrics_df.columns:
+                aucs[variant_name][k] = np.nan
+            continue
+
         metrics_df = pd.json_normalize(group["metrics_embed"])
         for k, v in metrics_df.items():
             score = 1 - v if k == "RadFlag" else v
@@ -105,8 +113,14 @@ def _tune_threshold(df: pd.DataFrame, embed_fn, n_trials: int = 20) -> float:
             df.copy(), embed_fn, threshold=thresh, show_progress=False
         )
         aucs = compute_roc_aucs(df_clustered)
-        mean_auc = np.mean(list(aucs["default"].values()))
-        return mean_auc
+        
+        # Use first available variant if "default" is missing
+        variant_key = "default" if "default" in aucs else next(iter(aucs)) if aucs else None
+        if variant_key is None or not aucs[variant_key]:
+            return 0.0
+            
+        mean_auc = np.mean([v for v in aucs[variant_key].values() if not np.isnan(v)])
+        return mean_auc if not np.isnan(mean_auc) else 0.0
 
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
@@ -119,7 +133,6 @@ def run_hedge_pipeline(
     num_distortions: int = 5,
     n_answers_high: int = 5,
     model_name: str = "qwen2.5-vl-7b",
-    use_unsloth: bool = False,
     embed_model: str = "medical",
     embed_threshold: Optional[float] = None,
     tune_threshold: bool = True,
@@ -144,15 +157,12 @@ def run_hedge_pipeline(
         vqa_dict,
         num_samples=num_distortions,
         dataset_id=dataset,
-        model_name=model_name,
-        n_jobs=4,
     )
 
     answers = generate_answers_transformers(
         distorted,
         model_name=model_name,
         n_answers_high=n_answers_high,
-        use_unsloth=use_unsloth,
     )
 
     df = pd.DataFrame(answers)
@@ -213,8 +223,6 @@ def run_layer_dynamics_pipeline(
         vqa_dict,
         num_samples=num_distortions,
         dataset_id=dataset,
-        model_name=model_name,
-        n_jobs=4,
     )
 
     answers = generate_answers_with_layer_dynamics(

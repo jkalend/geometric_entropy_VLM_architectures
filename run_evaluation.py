@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--num-distortions", type=int, default=5)
     parser.add_argument("--n-answers-high", type=int, default=5)
     parser.add_argument("--model", default="qwen2.5-vl-7b",
-                        help="VLM: qwen2.5-vl-7b, medgemma-4b-it")
+                        help="VLM: qwen2.5-vl-7b, qwen3-vl-8b, qwen3-vl-30b, medgemma-4b-it")
     parser.add_argument("--use-unsloth", action="store_true", default=False,
                         help="Use Unsloth (if available) for optimized inference")
     parser.add_argument("--embed-model", default="medical", choices=["general", "medical"],

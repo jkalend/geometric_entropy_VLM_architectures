@@ -14,18 +14,13 @@ Extraction of router_logits requires model support (output_router_logits=True in
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import torch
 
 
 def _extract_router_states(runs: list[dict]) -> list[list[torch.Tensor] | None]:
     """Extract router logits or expert indices from runs (each has 'router_logits' or 'expert_indices')."""
     return [r.get("router_logits") or r.get("expert_indices") for r in runs]
-
-
-def _router_entropy(router_probs: torch.Tensor, eps: float = 1e-8) -> float:
-    """Entropy of routing distribution. Higher = more uncertain expert selection."""
-    p = router_probs.clamp(min=eps)
-    return float((-p * p.log()).sum(dim=-1).mean().item())
 
 
 def _router_divergence(clean_probs: torch.Tensor, noisy_probs: torch.Tensor, eps: float = 1e-8) -> float:
@@ -67,14 +62,23 @@ def compute_expert_routing_metrics(
         noisy_layer = [r[L] for r in noisy_valid if L < len(r)]
         if len(clean_layer) < 1 or len(noisy_layer) < 1:
             continue
-        # Convert logits to probs if needed
-        c = clean_layer[0]
-        n = noisy_layer[0]
-        if c.dim() >= 2 and c.shape[-1] > 1:
-            c_probs = c.float().softmax(dim=-1)
-            n_probs = n.float().softmax(dim=-1)
-            div = _router_divergence(c_probs, n_probs)
-            divergences.append(div)
+        
+        # Convert all runs in layer to probabilities
+        c_probs_list = [x.float().softmax(dim=-1) if (x.dim() >= 2 and x.shape[-1] > 1) else x.float() for x in clean_layer]
+        n_probs_list = [x.float().softmax(dim=-1) if (x.dim() >= 2 and x.shape[-1] > 1) else x.float() for x in noisy_layer]
+        
+        # Compute mean divergence across all paired runs (clean[0] vs each noisy[i])
+        # or aggregate across all pairs if multiple clean runs exist.
+        # Here we follow the suggestion: aggregate across all runs.
+        layer_divs = []
+        for cp in c_probs_list:
+            for np_ in n_probs_list:
+                if cp.dim() >= 2 and cp.shape[-1] > 1:
+                    layer_divs.append(_router_divergence(cp, np_))
+        
+        if layer_divs:
+            divergences.append(float(np.mean(layer_divs)))
+
         # Variance of expert selection across noisy runs
         if len(noisy_layer) >= 2:
             stacked = torch.stack([x.float() for x in noisy_layer])
@@ -86,10 +90,8 @@ def compute_expert_routing_metrics(
     }
 
 
-def apply_expert_routing_metrics(df) -> "pd.DataFrame":
+def apply_expert_routing_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """Add expert routing metrics to rows that have router data in original_high_temp/distorted_high_temp."""
-    import pandas as pd
-
     def _row_metrics(row):
         return compute_expert_routing_metrics(
             row["original_high_temp"],

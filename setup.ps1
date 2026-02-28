@@ -3,14 +3,14 @@
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Creating venv..." -ForegroundColor Cyan
+Write-Output "Creating venv..."
 python -m venv venv
 
-Write-Host "Activating venv and installing PyTorch (cu130)..." -ForegroundColor Cyan
+Write-Output "Activating venv and installing PyTorch (cu130)..."
 & .\venv\Scripts\Activate.ps1
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 
-Write-Host "Installing remaining dependencies..." -ForegroundColor Cyan
+Write-Output "Installing remaining dependencies..."
 pip install -r requirements.txt
 
-Write-Host "Setup complete." -ForegroundColor Green
+Write-Output "Setup complete."
