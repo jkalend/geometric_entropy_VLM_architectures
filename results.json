@@ -1,0 +1,16 @@
+{
+  "mode": "hedge",
+  "dataset": "vqa_rad",
+  "model": "medgemma-4b-it",
+  "label_method": "ollama",
+  "judge_model": "gpt-oss:20b",
+  "embed_model": "medical",
+  "embed_threshold": 0.8827284041784821,
+  "aucs": {
+    "default": {
+      "SE": 0.6875,
+      "RadFlag": 0.6875,
+      "VASE": 0.6666666666666667
+    }
+  }
+}

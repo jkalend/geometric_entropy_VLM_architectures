@@ -1,0 +1,16 @@
+{
+  "mode": "hedge",
+  "dataset": "vqa_rad",
+  "model": "qwen2.5-vl-7b",
+  "label_method": "ollama",
+  "judge_model": "glm-4.7-flash",
+  "embed_model": "medical",
+  "embed_threshold": 0.8867317399944568,
+  "aucs": {
+    "default": {
+      "SE": 0.5845833333333335,
+      "RadFlag": 0.6174999999999999,
+      "VASE": 0.5927083333333333
+    }
+  }
+}
