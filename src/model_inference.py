@@ -6,13 +6,6 @@ Uses bfloat16 for inference.
 
 from pathlib import Path
 
-# Unsloth must be imported before transformers for optimizations (per Unsloth docs).
-# If import fails (e.g. PyTorch 2.10 flex_attention duplicate template), we fall back to standard path.
-try:
-    import unsloth  # noqa: F401
-except Exception:
-    unsloth = None
-
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -33,6 +26,72 @@ def _load_image(path: str | Path) -> Image.Image:
     raise FileNotFoundError(path)
 
 
+def _generate_qwen3(model, processor, image, question: str, temperature: float, max_new_tokens: int = 256):
+    """Qwen3-VL specific generation."""
+    messages = [
+        {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": question}]}
+    ]
+    inputs = processor.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=temperature > 0,
+        )
+    response = processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+    logprobs = [0.0] * max(1, len(response.split()))
+    return response.strip(), logprobs
+
+
+def _generate_qwen3_with_hidden_states(
+    model, processor, image, question: str, temperature: float, max_new_tokens: int = 256
+) -> tuple[str, list[float], list[torch.Tensor] | None]:
+    """Qwen3-VL (8B) generation with hidden states. Returns (response, logprobs, layer_hidden_states)."""
+    messages = [
+        {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": question}]}
+    ]
+    inputs = processor.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=temperature > 0,
+            output_hidden_states=True,
+            return_dict_in_generate=True,
+        )
+    input_len = inputs.input_ids.shape[1]
+    response = processor.decode(out.sequences[0][input_len:], skip_special_tokens=True)
+    logprobs = [0.0] * max(1, len(response.split()))
+
+    layer_states = None
+    if hasattr(out, "hidden_states") and out.hidden_states is not None:
+        try:
+            last_step = out.hidden_states[-1]
+            if last_step is not None:
+                layer_states = []
+                for layer_h in last_step:
+                    h = layer_h[0, -1, :].float().cpu()
+                    layer_states.append(h)
+        except (IndexError, AttributeError, TypeError) as e:
+            import warnings
+            warnings.warn(f"Could not extract hidden states: {e}")
+    return response.strip(), logprobs, layer_states
+
+
 def _generate_qwen(model, processor, image, question: str, temperature: float, max_new_tokens: int = 256):
     """Qwen2.5-VL specific generation."""
     messages = [
@@ -47,6 +106,30 @@ def _generate_qwen(model, processor, image, question: str, temperature: float, m
             temperature=temperature,
             do_sample=temperature > 0,
             pad_token_id=processor.tokenizer.pad_token_id or processor.tokenizer.eos_token_id,
+        )
+    response = processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+    logprobs = [0.0] * max(1, len(response.split()))
+    return response.strip(), logprobs
+
+
+def _generate_qwen3_moe(model, processor, image, question: str, temperature: float, max_new_tokens: int = 256):
+    """Qwen3-VL-30B (MoE) generation without hidden states."""
+    messages = [
+        {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": question}]}
+    ]
+    inputs = processor.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=temperature > 0,
         )
     response = processor.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
     logprobs = [0.0] * max(1, len(response.split()))
@@ -217,10 +300,10 @@ def generate_single(model, processor, image_path: str, question: str, temperatur
     if model_type == "gemma" or (hasattr(model, "generate") and "Gemma" in type(model).__name__):
         return _generate_gemma(model, processor, image, question, temperature, max_new_tokens)
     if model_type == "qwen3_moe":
-        # Using the specific Qwen3-VL-30B generation logic (without hidden states)
-        res, lp, _ = _generate_qwen3_moe_with_hidden_states(model, processor, image, question, temperature, max_new_tokens)
-        return res, lp
-    if hasattr(model, "generate") and "Qwen" in type(model).__name__:
+        return _generate_qwen3_moe(model, processor, image, question, temperature, max_new_tokens)
+    if model_type == "qwen3":
+        return _generate_qwen3(model, processor, image, question, temperature, max_new_tokens)
+    if model_type == "qwen" or (hasattr(model, "generate") and "Qwen" in type(model).__name__):
         return _generate_qwen(model, processor, image, question, temperature, max_new_tokens)
     
     # Fallback: try generic vision2seq
@@ -268,6 +351,15 @@ def generate_answers_transformers(
     if model_type == "qwen":
         from transformers import Qwen2_5_VLForConditionalGeneration
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            model_id,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+        )
+    elif model_type == "qwen3":
+        from transformers import Qwen3VLForConditionalGeneration
+        model = Qwen3VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
@@ -354,9 +446,9 @@ def generate_answers_with_layer_dynamics(
     model_id = cfg[0] if isinstance(cfg, tuple) else cfg
     model_type = cfg[1] if isinstance(cfg, tuple) and len(cfg) > 1 else "qwen"
     
-    if model_type not in ("qwen", "gemma", "qwen3_moe"):
+    if model_type not in ("qwen", "qwen3", "gemma", "qwen3_moe"):
         raise NotImplementedError(
-            f"Layer dynamics supports qwen, gemma, and qwen3_moe only, got {model_type}"
+            f"Layer dynamics supports qwen, qwen3, gemma, and qwen3_moe only, got {model_type}"
         )
 
     processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True, use_fast=False)
@@ -374,11 +466,31 @@ def generate_answers_with_layer_dynamics(
             return _generate_qwen_with_hidden_states(
                 model, processor, _load_image(im), q, temperature=t
             )
-    elif model_type == "qwen3_moe":
-        from transformers import Qwen3VLMoeForConditionalGeneration
-        model = Qwen3VLMoeForConditionalGeneration.from_pretrained(
+    elif model_type == "qwen3":
+        from transformers import Qwen3VLForConditionalGeneration
+        model = Qwen3VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
+            device_map=device,
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+        )
+        def _gen(im, q, t):
+            return _generate_qwen3_with_hidden_states(
+                model, processor, _load_image(im), q, temperature=t
+            )
+    elif model_type == "qwen3_moe":
+        # Qwen3-VL-30B-A3B is an MoE model; use 4-bit quantization to fit in VRAM
+        from transformers import Qwen3VLMoeForConditionalGeneration, BitsAndBytesConfig
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+        model = Qwen3VLMoeForConditionalGeneration.from_pretrained(
+            model_id,
+            quantization_config=quantization_config,
             device_map=device,
             low_cpu_mem_usage=True,
             trust_remote_code=True,

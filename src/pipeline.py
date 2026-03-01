@@ -138,9 +138,10 @@ def run_hedge_pipeline(
     tune_threshold: bool = True,
     tune_trials: int = 20,
     label_method: str = "simple",
-    ollama_model: str = "gpt-oss-20b",
+    ollama_model: str = "gpt-oss:20b",
     ollama_base_url: str = "http://localhost:11434",
     ollama_timeout: int = 120,
+    use_unsloth: bool = False,
 ) -> dict:
     """Run full HEDGE pipeline and return metrics."""
     if dataset == "vqa_rad":
@@ -208,7 +209,8 @@ def run_layer_dynamics_pipeline(
     ollama_timeout: int = 120,
 ) -> dict:
     """Run layer-wise semantic dynamics pipeline. Uses internal hidden states instead of output clustering.
-    Supports Qwen2.5-VL and InternVL 2.5-8B. Returns LVD, LVS, LVD_middle metrics and ROC AUCs."""
+    Supports Qwen2.5-VL (qwen), Qwen3-VL-8B (qwen3), Qwen3-VL-30B-A3B (qwen3_moe), and Med-Gemma (gemma).
+    Returns LVD, LVS, LVD_middle metrics and ROC AUCs."""
     if dataset == "vqa_rad":
         samples = load_vqa_rad(split="test", max_samples=max_samples)
     elif dataset == "medhallu":

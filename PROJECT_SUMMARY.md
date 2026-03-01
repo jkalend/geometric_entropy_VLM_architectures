@@ -137,7 +137,7 @@ Run: **100 samples**, **12 distortions**, **12 n_answers_high**. Ollama judge (g
 
 ### Cross-Architecture
 
-The current implementation supports Qwen2.5-VL and Med-Gemma.
+The current implementation supports Qwen2.5-VL, Qwen3-VL-8B, Qwen3-VL-30B-A3B, and Med-Gemma.
 
 ---
 

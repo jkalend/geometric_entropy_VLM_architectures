@@ -21,8 +21,6 @@ def main():
     parser.add_argument("--n-answers-high", type=int, default=5)
     parser.add_argument("--model", default="qwen2.5-vl-7b",
                         help="VLM: qwen2.5-vl-7b, qwen3-vl-8b, qwen3-vl-30b, medgemma-4b-it")
-    parser.add_argument("--use-unsloth", action="store_true", default=False,
-                        help="Use Unsloth (if available) for optimized inference")
     parser.add_argument("--embed-model", default="medical", choices=["general", "medical"],
                         help="Embedding model (HEDGE only): medical or general")
     parser.add_argument("--embed-threshold", type=float, default=None,
@@ -39,8 +37,6 @@ def main():
     parser.add_argument("--output", default="results.json")
     args = parser.parse_args()
 
-    if args.use_unsloth:
-        print("Warning: Unsloth support is experimental for the remaining models.")
     if args.label_method == "ollama":
         from src.label_judge import check_ollama_available
         if not check_ollama_available():
@@ -68,14 +64,13 @@ def main():
         }
     else:
         tune_threshold = not args.no_tune_threshold
-        print(f"Running HEDGE on {args.dataset} with {args.model} ({args.max_samples} samples, labels: {args.label_method}, embed: {args.embed_model}, tune: {tune_threshold}, unsloth: {args.use_unsloth})")
+        print(f"Running HEDGE on {args.dataset} with {args.model} ({args.max_samples} samples, labels: {args.label_method}, embed: {args.embed_model}, tune: {tune_threshold})")
         result = run_hedge_pipeline(
             dataset=args.dataset,
             max_samples=args.max_samples,
             num_distortions=args.num_distortions,
             n_answers_high=args.n_answers_high,
             model_name=args.model,
-            use_unsloth=args.use_unsloth,
             embed_model=args.embed_model,
             embed_threshold=args.embed_threshold,
             tune_threshold=tune_threshold,

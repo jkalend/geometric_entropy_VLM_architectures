@@ -14,7 +14,7 @@ from PIL import Image
 from tqdm import tqdm
 
 
-def distort_image(h: int, w: int) -> A.Compose:
+def distort_image() -> A.Compose:
     """Create albumentations pipeline for geometric + color + noise perturbations."""
     affine = A.Affine(
         rotate=random.choice([(-10, -2), (2, 10)]),
@@ -67,7 +67,7 @@ def generate_distortions(
         for k in range(num_samples):
             out_path = d / f"distorted_{k}.png"
             if not out_path.exists() or force_regenerate:
-                transform = distort_image(h, w)
+                transform = distort_image()
                 distorted = transform(image=arr)["image"]
                 Image.fromarray(distorted).save(out_path)
             distorted_paths.append(str(out_path))

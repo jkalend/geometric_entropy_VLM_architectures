@@ -74,6 +74,25 @@ def compute_expert_routing_metrics(
         for cp in c_probs_list:
             for np_ in n_probs_list:
                 if cp.dim() >= 2 and cp.shape[-1] > 1:
+                    # Validate shapes before computing divergence
+                    if cp.shape != np_.shape:
+                        # Align/truncate to common prefix length for sequence-first dims
+                        if cp.dim() >= 2 and np_.dim() >= 2:
+                            # Handle sequence dimension: use min sequence length
+                            seq_dim = -2 if cp.dim() >= 2 else None
+                            if seq_dim is not None and cp.shape[seq_dim] != np_.shape[seq_dim]:
+                                min_seq_len = min(cp.shape[seq_dim], np_.shape[seq_dim])
+                                cp = cp[..., :min_seq_len, :] if cp.dim() == 2 else cp[..., :min_seq_len, :]
+                                np_ = np_[..., :min_seq_len, :] if np_.dim() == 2 else np_[..., :min_seq_len, :]
+                            # If still mismatched after sequence alignment, skip
+                            if cp.shape != np_.shape:
+                                import warnings
+                                warnings.warn(f"Skipping KL computation: shape mismatch {cp.shape} vs {np_.shape}")
+                                continue
+                        else:
+                            import warnings
+                            warnings.warn(f"Skipping KL computation: shape mismatch {cp.shape} vs {np_.shape}")
+                            continue
                     layer_divs.append(_router_divergence(cp, np_))
         
         if layer_divs:

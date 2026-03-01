@@ -35,6 +35,10 @@ def main():
     except Exception as e:
         print(f"  Failed: {e}")
 
+    # Fail fast if no datasets loaded
+    if not datasets:
+        raise RuntimeError("No datasets loaded. All dataset loaders failed.")
+    
     # Persist datasets to disk
     output_dir = Path("data/prepared")
     output_dir.mkdir(parents=True, exist_ok=True)

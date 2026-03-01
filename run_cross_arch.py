@@ -1,5 +1,5 @@
 """
-Cross-architecture evaluation: run HEDGE on Qwen2.5-VL, Med-Gemma, LLaVA-Med, InternVL 2.5.
+Cross-architecture evaluation: run HEDGE on Qwen2.5-VL, Qwen3-VL-8B, Qwen3-VL-30B, and Med-Gemma.
 """
 
 import json

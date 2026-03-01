@@ -111,12 +111,19 @@ def compute_layer_roc_aucs(df) -> dict:
     import pandas as pd
     from sklearn.metrics import roc_auc_score
 
-    assert "hallucination_label" in df.columns
+    if "hallucination_label" not in df.columns:
+        raise KeyError("DataFrame must contain 'hallucination_label' column.")
     aucs = {}
     for variant_name, group in df.groupby("variant_name"):
         aucs[variant_name] = {}
         y_true = 1 - group["hallucination_label"]
         if np.unique(y_true).size < 2:
+            # Set NaN values for all metrics when no class diversity
+            aucs[variant_name] = {
+                "LVD": np.nan,
+                "LVS": np.nan,
+                "LVD_middle": np.nan,
+            }
             continue
         metrics_df = pd.json_normalize(group["metrics_layer"])
         for k in ["LVD", "LVS", "LVD_middle"]:
