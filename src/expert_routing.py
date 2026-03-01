@@ -82,26 +82,76 @@ def compute_expert_routing_metrics(
                             seq_dim = -2 if cp.dim() >= 2 else None
                             if seq_dim is not None and cp.shape[seq_dim] != np_.shape[seq_dim]:
                                 min_seq_len = min(cp.shape[seq_dim], np_.shape[seq_dim])
-                                cp = cp[..., :min_seq_len, :] if cp.dim() == 2 else cp[..., :min_seq_len, :]
-                                np_ = np_[..., :min_seq_len, :] if np_.dim() == 2 else np_[..., :min_seq_len, :]
+                                # Create aligned variables to avoid mutating original tensors
+                                cp_aligned = cp[..., :min_seq_len, :] if cp.dim() == 2 else cp[..., :min_seq_len, :]
+                                np_aligned = np_[..., :min_seq_len, :] if np_.dim() == 2 else np_[..., :min_seq_len, :]
+                            else:
+                                cp_aligned = cp
+                                np_aligned = np_
                             # If still mismatched after sequence alignment, skip
-                            if cp.shape != np_.shape:
+                            if cp_aligned.shape != np_aligned.shape:
                                 import warnings
-                                warnings.warn(f"Skipping KL computation: shape mismatch {cp.shape} vs {np_.shape}")
+                                warnings.warn(f"Skipping KL computation: shape mismatch {cp_aligned.shape} vs {np_aligned.shape}")
                                 continue
+                            layer_divs.append(_router_divergence(cp_aligned, np_aligned))
                         else:
                             import warnings
                             warnings.warn(f"Skipping KL computation: shape mismatch {cp.shape} vs {np_.shape}")
                             continue
-                    layer_divs.append(_router_divergence(cp, np_))
+                    else:
+                        layer_divs.append(_router_divergence(cp, np_))
         
         if layer_divs:
             divergences.append(float(np.mean(layer_divs)))
 
         # Variance of expert selection across noisy runs
         if len(noisy_layer) >= 2:
-            stacked = torch.stack([x.float() for x in noisy_layer])
-            variances.append(float(stacked.var(dim=0).mean().item()))
+            # Handle variable-length sequences by padding or flattening
+            noisy_float = [x.float() for x in noisy_layer]
+            # Check if all tensors have the same shape
+            shapes = [t.shape for t in noisy_float]
+            if len(set(shapes)) == 1:
+                # All same shape, can stack directly
+                stacked = torch.stack(noisy_float)
+                variances.append(float(stacked.var(dim=0).mean().item()))
+            else:
+                # Variable shapes: pad to common shape or compute variance elementwise
+                # Find max shape for padding
+                max_shape = max(shapes, key=lambda s: s.numel() if hasattr(s, 'numel') else len(s))
+                # Pad all tensors to max_shape
+                padded = []
+                for t in noisy_float:
+                    if t.shape == max_shape:
+                        padded.append(t)
+                    else:
+                        # Flatten and pad, or use pad_sequence if 1D/2D
+                        if t.dim() <= 2:
+                            from torch.nn.utils.rnn import pad_sequence
+                            # Convert to sequence format for pad_sequence
+                            if t.dim() == 1:
+                                t_padded = pad_sequence([t.unsqueeze(0)], batch_first=True).squeeze(0)
+                            else:
+                                t_padded = pad_sequence([t], batch_first=True).squeeze(0)
+                            # Truncate or pad to match max_shape
+                            if t_padded.shape == max_shape:
+                                padded.append(t_padded)
+                            else:
+                                # Fallback: flatten and compute variance on flattened version
+                                padded.append(t.flatten())
+                        else:
+                            # For higher dims, flatten
+                            padded.append(t.flatten())
+                # If we have consistent shapes after padding, stack; otherwise compute variance on flattened
+                if len(set(t.shape for t in padded)) == 1:
+                    stacked = torch.stack(padded)
+                    variances.append(float(stacked.var(dim=0).mean().item()))
+                else:
+                    # Compute variance elementwise: flatten all and compute mean variance
+                    flattened = [t.flatten() for t in padded]
+                    min_len = min(len(t) for t in flattened)
+                    truncated = [t[:min_len] for t in flattened]
+                    stacked = torch.stack(truncated)
+                    variances.append(float(stacked.var(dim=0).mean().item()))
 
     return {
         "ERD": float(np.mean(divergences)) if divergences else 0.0,

@@ -160,15 +160,27 @@ def radflag(semantic_ids, n):
     return semantic_subset.count(0) / n if n > 0 else 0.0
 
 
-def vase(n, semantic_ids, SeDist, SeDist_noisy, alpha=1.0):
-    """Vision-Amplified Semantic Entropy (VASE)."""
+def vase(n, semantic_ids, SeDist, SeDist_noisy, alpha=1.0, n_noisy=None):
+    """Vision-Amplified Semantic Entropy (VASE).
+    
+    Args:
+        n: Number of clean samples (for backward compatibility)
+        semantic_ids: Cluster IDs array (index 0 is low-temp, then clean, then noisy)
+        SeDist: Clean distribution
+        SeDist_noisy: Noisy distribution
+        alpha: Amplification factor
+        n_noisy: Number of noisy samples (if None, assumes n_noisy == n)
+    """
     all_ids = torch.as_tensor(semantic_ids, dtype=torch.long)
     SeDist = torch.as_tensor(SeDist, dtype=torch.float32)
     SeDist_noisy = torch.as_tensor(SeDist_noisy, dtype=torch.float32)
     max_id = int(max(semantic_ids)) + 1
     dist_vec = torch.zeros(max_id)
-    u_clean = all_ids[1 : n + 1].unique()
-    u_noisy = all_ids[n + 1 : 2 * n + 1].unique()
+    n_clean = n
+    n_noisy = n_noisy if n_noisy is not None else n
+    # cluster_ids[0] is low-temp, [1:1+n_clean] are clean, [1+n_clean:1+n_clean+n_noisy] are noisy
+    u_clean = all_ids[1 : 1 + n_clean].unique()
+    u_noisy = all_ids[1 + n_clean : 1 + n_clean + n_noisy].unique()
     if len(u_clean) != len(SeDist) or len(u_noisy) != len(SeDist_noisy):
         return 0.0
     dist_clean = dist_vec.clone().scatter(0, u_clean, SeDist)

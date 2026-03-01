@@ -88,7 +88,7 @@ def _generate_qwen3_with_hidden_states(
                     layer_states.append(h)
         except (IndexError, AttributeError, TypeError) as e:
             import warnings
-            warnings.warn(f"Could not extract hidden states: {e}")
+            warnings.warn(f"Could not extract hidden states: {e}", stacklevel=2)
     return response.strip(), logprobs, layer_states
 
 
@@ -177,7 +177,7 @@ def _generate_qwen3_moe_with_hidden_states(
                     layer_states.append(h)
         except (IndexError, AttributeError, TypeError) as e:
             import warnings
-            warnings.warn(f"Could not extract hidden states: {e}")
+            warnings.warn(f"Could not extract hidden states: {e}", stacklevel=2)
     return response.strip(), logprobs, layer_states
 
 
@@ -217,7 +217,7 @@ def _generate_qwen_with_hidden_states(
                     layer_states.append(h)
         except (IndexError, AttributeError, TypeError) as e:
             import warnings
-            warnings.warn(f"Could not extract hidden states: {e}")
+            warnings.warn(f"Could not extract hidden states: {e}", stacklevel=2)
     return response.strip(), logprobs, layer_states
 
 
@@ -231,7 +231,9 @@ def _generate_gemma_with_hidden_states(
     try:
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
-    except Exception:
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        import warnings
+        warnings.warn(f"Processor apply_chat_template failed, using fallback: {e}", stacklevel=2)
         prompt = f"<image>\n{question}"
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
     
@@ -262,7 +264,7 @@ def _generate_gemma_with_hidden_states(
                     layer_states.append(h)
         except (IndexError, AttributeError, TypeError) as e:
             import warnings
-            warnings.warn(f"Could not extract hidden states: {e}")
+            warnings.warn(f"Could not extract hidden states: {e}", stacklevel=2)
     return response.strip(), logprobs, layer_states
 
 
@@ -274,7 +276,9 @@ def _generate_gemma(model, processor, image, question: str, temperature: float, 
     try:
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
-    except Exception:
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        import warnings
+        warnings.warn(f"Processor apply_chat_template failed, using fallback: {e}", stacklevel=2)
         # Fallback if chat template fails
         prompt = f"<image>\n{question}"
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
@@ -313,7 +317,9 @@ def generate_single(model, processor, image_path: str, question: str, temperatur
     try:
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
-    except Exception:
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        import warnings
+        warnings.warn(f"Processor apply_chat_template failed, using fallback: {e}", stacklevel=2)
         prompt = question
         if "<image>" not in prompt and "image" in getattr(processor, "model_input_names", []):
             # Generic heuristic: prepend <image> if not present

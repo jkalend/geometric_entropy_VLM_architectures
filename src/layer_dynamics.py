@@ -55,6 +55,7 @@ def compute_layer_metrics(
 
     deltas = []
     ratios = []
+    kept_layer_indices = []  # Track which original layer indices were kept
     for L in range(num_layers):
         clean_layer = [r[L] for r in clean_valid if L < len(r)]
         noisy_layer = [r[L] for r in noisy_valid if L < len(r)]
@@ -64,6 +65,7 @@ def compute_layer_metrics(
         var_noisy = _layer_variance(noisy_layer)
         deltas.append(var_noisy - var_clean)
         ratios.append(var_noisy / var_clean if var_clean > 0 else 0.0)
+        kept_layer_indices.append(L)  # Record that layer L was kept
 
     if not deltas:
         return {"LVD": 0.0, "LVS": 0.0, "LVD_middle": 0.0}
@@ -71,11 +73,12 @@ def compute_layer_metrics(
     lvd = float(np.mean(deltas))
     lvs = float(np.max(ratios)) if ratios else 0.0
 
-    # Middle layers
+    # Middle layers: filter deltas whose original layer indices fall in the middle range
     lo = int(num_layers * middle_layer_frac[0])
     hi = int(num_layers * middle_layer_frac[1])
     lo, hi = max(0, lo), min(num_layers, hi)
-    middle_deltas = deltas[lo:hi] if hi > lo else deltas
+    # Filter deltas by keeping only those whose original layer index is in [lo, hi)
+    middle_deltas = [deltas[i] for i, orig_idx in enumerate(kept_layer_indices) if lo <= orig_idx < hi]
     lvd_middle = float(np.mean(middle_deltas)) if middle_deltas else lvd
 
     return {"LVD": lvd, "LVS": lvs, "LVD_middle": lvd_middle}

@@ -67,12 +67,16 @@ def apply_embed_clustering_df(df, embedding_fn, threshold=0.90, append_question=
 
 def _compute_metrics(n, cluster_ids, normal_logs, noisy_logs, alpha=1.0):
     """Compute SE, RadFlag, VASE from clustering results."""
-    ent_clean, dist_clean = sentence_semantic_entropy(normal_logs, cluster_ids[1 : 1 + n])
-    ent_noisy, dist_noisy = sentence_semantic_entropy(noisy_logs, cluster_ids[1 + n :])
+    # Compute actual clean and noisy counts (they may differ from n)
+    n_clean = len(normal_logs)
+    n_noisy = len(noisy_logs)
+    # cluster_ids[0] is the low-temp answer, [1:1+n_clean] are clean high-temp, [1+n_clean:1+n_clean+n_noisy] are noisy
+    ent_clean, dist_clean = sentence_semantic_entropy(normal_logs, cluster_ids[1 : 1 + n_clean])
+    ent_noisy, dist_noisy = sentence_semantic_entropy(noisy_logs, cluster_ids[1 + n_clean : 1 + n_clean + n_noisy])
     return {
         "SE": float(ent_clean),
-        "RadFlag": radflag(cluster_ids, n),
-        "VASE": vase(n, cluster_ids, dist_clean, dist_noisy, alpha),
+        "RadFlag": radflag(cluster_ids, n_clean),  # Use actual clean count
+        "VASE": vase(n_clean, cluster_ids, dist_clean, dist_noisy, alpha, n_noisy=n_noisy),  # Pass both counts
     }
 
 
@@ -141,7 +145,6 @@ def run_hedge_pipeline(
     ollama_model: str = "gpt-oss:20b",
     ollama_base_url: str = "http://localhost:11434",
     ollama_timeout: int = 120,
-    use_unsloth: bool = False,
 ) -> dict:
     """Run full HEDGE pipeline and return metrics."""
     if dataset == "vqa_rad":
