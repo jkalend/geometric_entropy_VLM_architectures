@@ -34,8 +34,11 @@ def main():
     parser.add_argument("--ollama-model", default="gpt-oss:20b",
                         help="Ollama model for judge (e.g. glm-4.7-flash, gpt-oss:20b, qwen3.5:27b)")
     parser.add_argument("--ollama-timeout", type=int, default=120)
-    parser.add_argument("--output", default="results.json")
+    parser.add_argument("--output", help="Path to results.json file (default: results_{model}.json)")
     args = parser.parse_args()
+
+    if args.output is None:
+        args.output = f"results_{args.model}.json"
 
     if args.label_method == "ollama":
         from src.label_judge import check_ollama_available
@@ -61,6 +64,7 @@ def main():
             "label_method": args.label_method,
             "judge_model": args.ollama_model if args.label_method == "ollama" else None,
             "aucs": result["aucs"],
+            "samples": result["df"],
         }
     else:
         tune_threshold = not args.no_tune_threshold
@@ -88,6 +92,7 @@ def main():
             "embed_model": args.embed_model,
             "embed_threshold": result.get("embed_threshold"),
             "aucs": result["aucs"],
+            "samples": result["df"],
         }
 
     Path(args.output).write_text(json.dumps(out, indent=2))

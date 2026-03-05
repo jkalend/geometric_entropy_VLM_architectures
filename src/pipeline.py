@@ -170,6 +170,18 @@ def run_hedge_pipeline(
     )
 
     df = pd.DataFrame(answers)
+    # Clear GPU memory if using Ollama judge to avoid VRAM contention
+    if label_method == "ollama":
+        import torch
+        import gc
+        # We need to find where the model is stored. In run_evaluation.py, 
+        # the model is loaded inside generate_answers_transformers or generate_answers_with_layer_dynamics.
+        # However, those functions don't return the model object.
+        # We'll rely on gc.collect() and torch.cuda.empty_cache() to clear any lingering tensors.
+        # For a more thorough cleanup, we'd need to modify model_inference.py to allow explicit unloading.
+        gc.collect()
+        torch.cuda.empty_cache()
+
     df = add_hallucination_labels(
         df,
         method=label_method,
@@ -197,7 +209,18 @@ def run_hedge_pipeline(
 
     df = apply_embed_clustering_df(df, embed_fn, threshold=threshold)
     aucs = compute_roc_aucs(df)
-    return {"aucs": aucs, "df": df, "embed_threshold": threshold}
+
+    # Convert dataframe to a serializable list of dicts, excluding heavy hidden states
+    # We keep the text answers for future judging/analysis
+    serializable_df = df.copy()
+    if "original_high_temp" in serializable_df.columns:
+        # Remove layer_hidden_states from the output if they exist (too large for JSON)
+        def _strip_states(answers):
+            return [{"ans": a["ans"], "logprob": a["logprob"]} for a in answers]
+        serializable_df["original_high_temp"] = serializable_df["original_high_temp"].apply(_strip_states)
+        serializable_df["distorted_high_temp"] = serializable_df["distorted_high_temp"].apply(_strip_states)
+
+    return {"aucs": aucs, "df": serializable_df.to_dict(orient="records"), "embed_threshold": threshold}
 
 
 def run_layer_dynamics_pipeline(
@@ -237,6 +260,18 @@ def run_layer_dynamics_pipeline(
     )
 
     df = pd.DataFrame(answers)
+    # Clear GPU memory if using Ollama judge to avoid VRAM contention
+    if label_method == "ollama":
+        import torch
+        import gc
+        # We need to find where the model is stored. In run_evaluation.py, 
+        # the model is loaded inside generate_answers_transformers or generate_answers_with_layer_dynamics.
+        # However, those functions don't return the model object.
+        # We'll rely on gc.collect() and torch.cuda.empty_cache() to clear any lingering tensors.
+        # For a more thorough cleanup, we'd need to modify model_inference.py to allow explicit unloading.
+        gc.collect()
+        torch.cuda.empty_cache()
+
     df = add_hallucination_labels(
         df,
         method=label_method,
@@ -247,4 +282,13 @@ def run_layer_dynamics_pipeline(
 
     df = apply_layer_dynamics_metrics(df)
     aucs = compute_layer_roc_aucs(df)
-    return {"aucs": aucs, "df": df}
+
+    # Convert dataframe to a serializable list of dicts, excluding heavy hidden states
+    serializable_df = df.copy()
+    if "original_high_temp" in serializable_df.columns:
+        def _strip_states(answers):
+            return [{"ans": a["ans"], "logprob": a["logprob"]} for a in answers]
+        serializable_df["original_high_temp"] = serializable_df["original_high_temp"].apply(_strip_states)
+        serializable_df["distorted_high_temp"] = serializable_df["distorted_high_temp"].apply(_strip_states)
+
+    return {"aucs": aucs, "df": serializable_df.to_dict(orient="records")}

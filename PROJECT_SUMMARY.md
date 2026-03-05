@@ -36,7 +36,7 @@ This project implements the **HEDGE (Hallucination Estimation via Dense Geometri
 
 - **Precision**: bfloat16 for all models (~14–16GB VRAM for 7B).
 - **Execution**: Sequential model loading; one model at a time to respect 32GB RAM and 24GB VRAM limits.
-- **Models**: Qwen2.5-VL-7B (primary), MedGemma-4B-IT.
+- **Models**: Qwen2.5-VL-7B (primary), Qwen3-VL-8B, Qwen3-VL-30B-A3B (4-bit quantized), MedGemma-4B-IT.
 - **Unsloth** (optional): Experimental support for optimized inference.
 
 ### 4. HEDGE Pipeline Implementation
@@ -93,6 +93,9 @@ python run_evaluation.py --max-samples 100 --num-distortions 12 --n-answers-high
 # Quick run
 python run_evaluation.py --dataset vqa_rad --max-samples 10 --model qwen2.5-vl-7b --output results.json
 
+# Qwen3-VL-8B evaluation
+python run_evaluation.py --model qwen3-vl-8b --max-samples 100 --output results_qwen3_8b_100.json
+
 # MedGemma evaluation
 python run_evaluation.py --model medgemma-4b-it --max-samples 10 --output results_medgemma.json
 ```
@@ -100,10 +103,17 @@ python run_evaluation.py --model medgemma-4b-it --max-samples 10 --output result
 ### Layer-Wise Semantic Dynamics
 
 ```powershell
+# Quick run (10 samples)
 python run_evaluation.py --layer-dynamics --dataset vqa_rad --max-samples 10 --output results_layer.json
+
+# Qwen3-VL-8B (100 samples)
+python run_evaluation.py --layer-dynamics --model qwen3-vl-8b --max-samples 100 --output results_qwen3_8b_100_layer.json
+
+# Med-Gemma (100 samples)
+python run_evaluation.py --layer-dynamics --model medgemma-4b-it --max-samples 100 --output results_gemma_100_layer.json
 ```
 
-Uses internal hidden states across LLM layers instead of output-level clustering. Metrics: **LVD** (Layer Variance Delta), **LVS** (Layer Variance Spike), **LVD_middle** (middle layers only). Supports **Qwen2.5-VL**, **Qwen3-VL-30B**, and **MedGemma**.
+Uses internal hidden states across LLM layers instead of output-level clustering. Metrics: **LVD** (Layer Variance Delta), **LVS** (Layer Variance Spike), **LVD_middle** (middle layers only). Supports **Qwen2.5-VL**, **Qwen3-VL-8B**, **Qwen3-VL-30B**, and **MedGemma**.
 
 ### Cross-Architecture Evaluation
 
@@ -121,23 +131,41 @@ python scripts/prepare_data.py
 
 ## Results
 
-### Full-Scale Evaluation (Qwen2.5-VL-7B, VQA-RAD)
+### Full-Scale HEDGE Evaluation (100 samples, VQA-RAD)
 
-Run: **100 samples**, **12 distortions**, **12 n_answers_high**. Ollama judge (glm-4.7-flash), medical embeddings, Optuna threshold tuning (20 trials).
+All runs: **100 samples**, medical embeddings, Optuna threshold tuning. Judge and distortion/answer counts vary by run.
 
-| Metric | ROC AUC | Interpretation |
-|--------|---------|----------------|
-| SE | 0.585 | Above random; moderate predictive power |
-| RadFlag | 0.617 | Best-performing metric |
-| VASE | 0.593 | Similar to SE |
+| Model | Judge | SE AUC | RadFlag AUC | VASE AUC | Best Threshold |
+|-------|-------|--------|-------------|----------|----------------|
+| **Qwen2.5-VL-7B** | glm-4.7-flash | 0.585 | **0.617** | 0.593 | ~0.887 |
+| **Qwen3-VL-8B** | gpt-oss:20b | 0.583 | 0.583 | **0.601** | 0.790 |
+| **Med-Gemma-4B-IT** | gpt-oss:20b | 0.614 | **0.634** | 0.601 | 0.771 |
 
-- **Best embedding threshold**: ~0.887 (Optuna-tuned; default 0.90).
+**Note:** Qwen2.5-VL-7B used `glm-4.7-flash` as judge; Qwen3-VL-8B and Med-Gemma used `gpt-oss:20b`. Direct comparison should account for this—hallucination labels depend on the judge, so differences may reflect judge behavior as well as model architecture.
+
 - All metrics above 0.5 → geometric stability correlates with hallucination status.
-- RadFlag (fraction of clean samples in cluster 0) is the strongest signal for this setup.
+- **RadFlag** is strongest for Qwen2.5-VL and Med-Gemma; **VASE** is strongest for Qwen3-VL-8B.
 
-### Cross-Architecture
+### Cross-Architecture Interpretation (Qwen2.5-VL, Qwen3-VL-8B, Med-Gemma)
 
-The current implementation supports Qwen2.5-VL, Qwen3-VL-8B, Qwen3-VL-30B-A3B, and Med-Gemma.
+- **VASE** (~0.59–0.60) transfers consistently across all three architectures, supporting the hypothesis that the stability gap between clean and noisy conditions is architecture-agnostic.
+- **Caveat:** Qwen2.5-VL used a different judge (glm-4.7-flash) than Qwen3-VL-8B and Med-Gemma (gpt-oss:20b). Comparisons involving Qwen2.5-VL may conflate judge effects with model differences.
+- **RadFlag** is strongest for Qwen2.5-VL (0.617) and Med-Gemma (0.634); Qwen3-VL-8B ties SE and RadFlag at 0.583.
+- Med-Gemma (restricted tokenization) achieves slightly better overall signal than Qwen3-VL-8B despite smaller size, suggesting geometric stability metrics can transfer to compressed visual architectures.
+
+### Layer-Wise Dynamics (100 samples, VQA-RAD)
+
+Evaluation of internal hidden-state evolution under perturbation. Both runs used Ollama judge (`gpt-oss:20b`).
+
+| Model | LVD | LVS | LVD_middle |
+|-------|-----|-----|------------|
+| **Qwen3-VL-8B** | 0.506 | 0.527 | 0.536 |
+| **Med-Gemma-4B-IT** | 0.434 | 0.476 | 0.409 |
+
+**Interpretation:**
+- **Qwen3-VL-8B** (dense tokenization): Layer-wise metrics are slightly above random (0.5). LVD_middle (0.536) is the strongest signal, suggesting middle-layer variance shifts weakly correlate with hallucination status. The signal is modest but in the expected direction.
+- **Med-Gemma-4B-IT** (restricted tokenization): All metrics are **below 0.5**, indicating an inverse correlation. Hallucinated generations exhibited *lower* layer-wise variance shifts than correct answers. LVD_middle (0.409) is the weakest.
+- **Cross-architecture takeaway**: Dense-token models (Qwen3-VL) show a weak but positive transfer of layer-variance metrics to hallucination detection. Restricted-token models (Med-Gemma) show the opposite pattern—their internal semantic dynamics behave differently at the hidden-state level. Standard layer-variance tracking does not transfer across this architectural gap without adaptation to how each model compresses visual features.
 
 ---
 
@@ -158,12 +186,12 @@ The current implementation supports Qwen2.5-VL, Qwen3-VL-8B, Qwen3-VL-30B-A3B, a
 
 - **Purpose**: Analyze geometric evolution of hidden states across layers to identify where hallucination begins.
 - **Metrics**: LVD (mean layer variance delta), LVS (max variance ratio), LVD_middle (middle layers).
-- **Research question**: Do layer-wise geometric patterns transfer more robustly across datasets (HaluEval vs. MedHallu) than output-level detectors?
+- **Research questions**: (1) Do layer-wise geometric patterns transfer across architectures? *Answered on VQA-RAD*: weakly for dense-token models (Qwen3-VL), not for restricted-token models (Med-Gemma). (2) Do they transfer across datasets (HaluEval vs. MedHallu)? *Not yet evaluated.*
 - **Usage**: `python run_evaluation.py --layer-dynamics`
 
 ---
 
 ## Future Work
 
-- Produce quantitative comparison of VASE across Qwen2.5 and Med-Gemma.
-- **Expert Routing**: Wire `output_router_logits` through DeepSeek-VL2 forward to enable full ERD/EPV computation.
+- Quantitative comparison of VASE across Qwen2.5, Qwen3-VL-8B, and Med-Gemma (partially done; see Results).
+- **Expert Routing**: Wire `output_router_logits` through Qwen3-VL-30B forward to enable full ERD/EPV computation.

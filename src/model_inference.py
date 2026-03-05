@@ -13,7 +13,7 @@ from transformers import AutoProcessor
 
 MODEL_CONFIGS = {
     "qwen2.5-vl-7b": ("Qwen/Qwen2.5-VL-7B-Instruct", "qwen"),
-    "qwen3-vl-8b": ("Qwen/Qwen3-VL-8B-Instruct", "qwen"),
+    "qwen3-vl-8b": ("Qwen/Qwen3-VL-8B-Instruct", "qwen3"),
     "qwen3-vl-30b": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "qwen3_moe"),
     "medgemma-4b-it": ("google/medgemma-4b-it", "gemma"),
 }
